@@ -1,4 +1,5 @@
 TARGET=myvhub
+TARGET+=myvmon
 
 CFLAGS=-Wall -Werror
 
