@@ -1,5 +1,8 @@
 TARGET=myvhub
 TARGET+=myvmon
+TARGET+=usrv
+TARGET+=icmp_ping
+TARGET+=myping
 
 CFLAGS=-Wall -Werror
 

@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 
 #define VERBOSE 0
 
@@ -46,11 +47,22 @@ int main( int argc, char *argv[])
 	int n;
 	int on;
 	int i;
+	char *cserver = 0;
+	int cport = 0;
+	int remote_link_socket = -1;
 	int arg = 1;
 	
 	if (arg < argc)
 	{
 		sscanf( argv[arg++], "%d", &port);
+		if (arg < argc)
+		{
+			cserver = argv[arg++];
+			if (arg < argc)
+			{
+				sscanf( argv[arg++], "%d", &cport);
+			}
+		}
 	}
 	ss = socket( PF_INET, SOCK_STREAM, 0);
 	on = 1;
@@ -64,8 +76,30 @@ int main( int argc, char *argv[])
 	for (i = 0; i < MAX; i++)
 	{
 		s[i] = -1;
+		e[i] = 0;
 	}
-	memset( e, 0, sizeof( e));
+	if (cserver && cport)
+	{
+		remote_link_socket = socket( PF_INET, SOCK_STREAM, 0);
+		memset( &sa, 0, sizeof( sa));
+		sa.sin_family = AF_INET;
+		sa.sin_port = htons( cport);
+		sa.sin_addr.s_addr = inet_addr( cserver);
+		n = connect( remote_link_socket, (struct sockaddr *)&sa, sizeof( sa));
+		if (n == -1)
+		{
+			perror( "connect");
+			exit( 6);
+		}
+		int nport = htons( port);
+		n = write( remote_link_socket, &nport, sizeof( nport));
+		if (n == -1)
+		{
+			perror( "write");
+			exit( 7);
+		}
+		printf( "connecting to remote link %s:%d\n", cserver, cport);
+	}
 	printf( "listening on port %d..\n", port);
 	while (1)
 	{
@@ -112,7 +146,10 @@ int main( int argc, char *argv[])
 				if (n == -1)
 				{
 					perror( "read size");
-					exit( 3);
+					dprintf( 5, "disconnecting size client %d\n", i);
+					close( s[i]);
+					s[i] = -1;
+					e[i] = 0;
 				}
 				else if (n == 0)
 				{
