@@ -58,7 +58,9 @@ int main()
 		}
 		else
 		{
-//			printf( "%s: skip regular data : size %" PRIu32 "\n", __func__, size);
+			static int count = 0;
+			printf( "%s: skip regular data : size %" PRIu32 ", packet count=%d\n", __func__, size, count);
+			count++;
 		}
 		free( buf);
 	}
