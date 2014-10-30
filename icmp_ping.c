@@ -1,9 +1,12 @@
-#include <stdio.h>
 #include <inttypes.h>
+#include <stdio.h>
 #include <string.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
+#ifdef WIN32
+#undef s_addr
+#endif
 #define mtod(m,t) (t)m->ip
 typedef struct ip {
 	struct {

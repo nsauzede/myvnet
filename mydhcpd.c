@@ -89,6 +89,8 @@ int send_vnet( int fd, char *buf, int size)
 	nsize = htonl( size);
 	n = write( fd, &nsize, sizeof( nsize));
 	n = write( fd, buf, size);
+	if (n == -1)
+		perror( "write");
 	
 	return 0;
 }
@@ -99,10 +101,16 @@ uint8_t the_ip[4] = { 192, 168, 0, 1 };
 
 uint8_t cli_ip[4] = { 192, 168, 0, 11 };
 
+#ifdef WIN32
+#define PRIzd "d"
+#else
+#define PRIzd "zd"
+#endif
+
 int manage_bootps( char *buf, int size)
 {
 	struct bootp *hdr = (void *)buf;
-	printf( "%s: size=%d hdr=%zd\n", __func__, size, sizeof( *hdr));
+	printf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
 	if (size < sizeof( *hdr))
 	{
 		printf( "not bootps ?\n");
@@ -118,7 +126,7 @@ int manage_bootps( char *buf, int size)
 		printf( ":%02" PRIx8, cli[i]);
 	}
 	printf( "\n");
-	printf( "magic=%08" PRIx32 "\n", ntohl( hdr->magic));
+	printf( "magic=%08" PRIx32 "\n", (uint32_t)ntohl( hdr->magic));
 	
 	int disc = 1;
 	int pos = 0;
@@ -220,7 +228,7 @@ int manage_bootps( char *buf, int size)
 	_size += bootpcs;
 	if (_size > sizeof( _eth))
 	{
-		printf( "%s: bootpc frame too big (_size=%d, max=%zd)\n", __func__, _size, sizeof( eth));
+		printf( "%s: bootpc frame too big (_size=%d, max=%" PRIzd ")\n", __func__, _size, sizeof( eth));
 		return 1;
 	}
 	pos = 0;
@@ -240,7 +248,7 @@ int manage_bootps( char *buf, int size)
 int manage_udp( char *buf, int size)
 {
 	struct udp *hdr = (void *)buf;
-	printf( "%s: size=%d hdr=%zd\n", __func__, size, sizeof( *hdr));
+	printf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
 	if (size < sizeof( *hdr))
 	{
 		printf( "not ip ?\n");
@@ -261,7 +269,7 @@ int manage_udp( char *buf, int size)
 int manage_ip( char *buf, int size)
 {
 	struct ip *hdr = (void *)buf;
-	printf( "%s: size=%d hdr=%zd\n", __func__, size, sizeof( *hdr));
+	printf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
 	if (size < sizeof( *hdr))
 	{
 		printf( "not ip ?\n");
@@ -282,7 +290,7 @@ int manage_ip( char *buf, int size)
 int manage_arp( char *buf, int size)
 {
 	struct arp *hdr = (void *)buf;
-	printf( "%s: size=%d hdr=%zd\n", __func__, size, sizeof( *hdr));
+	printf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
 	if (size < sizeof( *hdr))
 	{
 		printf( "not arp ?\n");
@@ -327,7 +335,8 @@ int manage_arp( char *buf, int size)
 	arp.ptype = 0x0008;
 	arp.hsize = 6;
 	arp.psize = 4;
-	arp.opcode = 0x0200;
+	if (req == 1)
+		arp.opcode = 0x0200;
 	for (i = 0; i < 6; i++)
 	{
 		arp.sender_mac[i] = the_mac[i];
@@ -351,7 +360,7 @@ int manage_arp( char *buf, int size)
 
 	if (_size > sizeof( _eth))
 	{
-		printf( "%s: bootpc frame too big (_size=%d, max=%zd)\n", __func__, _size, sizeof( eth));
+		printf( "%s: bootpc frame too big (_size=%d, max=%" PRIzd ")\n", __func__, _size, sizeof( eth));
 		return 1;
 	}
 	pos = 0;
@@ -368,7 +377,7 @@ int manage_arp( char *buf, int size)
 int manage_eth( char *buf, int size)
 {
 	struct eth *hdr = (void *)buf;
-	printf( "%s: size=%d hdr=%zd\n", __func__, size, sizeof( *hdr));
+	printf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
 	if (size < sizeof( *hdr))
 	{
 		printf( "not ethernet ?\n");
@@ -443,7 +452,7 @@ int main( int argc, char *argv[])
 			size = ntohl( nsize);
 			if (size > sizeof( buf))
 			{
-				printf( "frame too big ! got %d max %zd\n", size, sizeof( buf));
+				printf( "frame too big ! got %d max %" PRIzd "\n", size, sizeof( buf));
 				exit( 3);
 			}
 			printf( "about to read %d bytes\n", size);
