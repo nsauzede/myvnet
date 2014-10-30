@@ -18,6 +18,18 @@ typedef struct eth {
 	uint16_t type;
 } eth_t;
 
+typedef struct arp {
+	uint16_t htype;
+	uint16_t ptype;
+	uint8_t hsize;
+	uint8_t psize;
+	uint16_t opcode;
+	uint8_t sender_mac[6];
+	uint8_t sender_ip[4];
+	uint8_t target_mac[6];
+	uint8_t target_ip[4];
+} arp_t;
+
 typedef struct ip {
 	uint8_t version;
 	uint8_t option;
@@ -48,7 +60,9 @@ typedef struct bootp {
 	uint8_t srv_ip[4];
 	uint8_t pad1[4];
 	uint8_t cli_mac[6];
-	uint8_t pad2[10+64+128];
+	uint8_t mac_pad2[10];
+	uint8_t host[64];
+	uint8_t boot[128];
 	uint32_t magic;
 	uint8_t options[300-66+32-4-10-64-128];
 } bootp_t;
@@ -56,7 +70,10 @@ typedef struct bootp {
 #pragma pack()
 
 #define MAX_ETH			1500
+
 #define ETH_TYPE_IP		0x0008
+#define ETH_TYPE_ARP	0x0608
+
 #define IP_PROTO_UDP	0x11
 
 int send_vnet( int fd, char *buf, int size)
@@ -93,16 +110,11 @@ int manage_bootps( char *buf, int size)
 	}
 	
 	uint8_t cli[6];
-	cli[0] = hdr->cli_mac[0];
-	cli[1] = hdr->cli_mac[1];
-	cli[2] = hdr->cli_mac[2];
-	cli[3] = hdr->cli_mac[3];
-	cli[4] = hdr->cli_mac[4];
-	cli[5] = hdr->cli_mac[5];
 	printf( "%s: client MAC is ", __func__);
 	int i;
 	for (i = 0; i < 6; i++)
 	{
+		cli[i] = hdr->cli_mac[i];
 		printf( ":%02" PRIx8, cli[i]);
 	}
 	printf( "\n");
@@ -152,6 +164,7 @@ int manage_bootps( char *buf, int size)
 	for (i = 0; i < 4; i++)
 	{
 		bootp.cli_ip[i] = cli_ip[i];
+		bootp.srv_ip[i] = the_ip[i];
 	}
 	for (i = 0; i < 6; i++)
 	{
@@ -174,6 +187,7 @@ int manage_bootps( char *buf, int size)
 	}
 	// end
 	bootp.options[pos++] = 0xff;
+	strcpy( (char *)bootp.boot, "pxelinux.0");
 	
 	memset( &udp, 0, udps);
 	udp.sport = htons( 67);
@@ -259,9 +273,95 @@ int manage_ip( char *buf, int size)
 			manage_udp( buf + sizeof( *hdr), size - sizeof( *hdr));
 			break;
 		default:
-			printf( "unknown ip protocol 0x%01x\n", hdr->proto);
+			printf( "unknown ip protocol 0x%02x\n", hdr->proto);
 			break;
 	}
+	return 0;
+}
+
+int manage_arp( char *buf, int size)
+{
+	struct arp *hdr = (void *)buf;
+	printf( "%s: size=%d hdr=%zd\n", __func__, size, sizeof( *hdr));
+	if (size < sizeof( *hdr))
+	{
+		printf( "not arp ?\n");
+		return 1;
+	}
+
+	uint8_t cli[6];
+	printf( "%s: sender MAC is ", __func__);
+	int i;
+	for (i = 0; i < 6; i++)
+	{
+		cli[i] = hdr->sender_mac[i];
+		printf( ":%02" PRIx8, cli[i]);
+	}
+	printf( "\n");
+	int pos = 0;
+
+	int req = 0;
+	switch (hdr->opcode)
+	{
+#define ARP_OPCODE_REQUEST 0x0100
+		case ARP_OPCODE_REQUEST:
+			req = 1;
+			break;
+		default:
+			printf( "unknown arp opcode 0x%04x\n", hdr->opcode);
+			return -1;
+	}
+
+	printf( "ARP REQUEST\n");
+
+	char _eth[MAX_ETH];
+	int _size = 0;
+
+	struct arp arp;
+	int arps = sizeof( arp);
+	struct eth eth;
+	int eths = sizeof( eth);
+
+	memset( &arp, 0, sizeof( arp));
+	arp.htype = 0x0100;
+	arp.ptype = 0x0008;
+	arp.hsize = 6;
+	arp.psize = 4;
+	arp.opcode = 0x0200;
+	for (i = 0; i < 6; i++)
+	{
+		arp.sender_mac[i] = the_mac[i];
+		arp.target_mac[i] = hdr->sender_mac[i];
+	}
+	for (i = 0; i < 4; i++)
+	{
+		arp.sender_ip[i] = the_ip[i];
+		arp.target_ip[i] = cli_ip[i];
+	}
+	_size += arps;
+
+	memset( &eth, 0, eths);
+	for (i = 0; i < 6; i++)
+	{
+		eth.dst[i] = cli[i];
+		eth.src[i] = the_mac[i];
+	}
+	eth.type = 0x0608;
+	_size += eths;
+
+	if (_size > sizeof( _eth))
+	{
+		printf( "%s: bootpc frame too big (_size=%d, max=%zd)\n", __func__, _size, sizeof( eth));
+		return 1;
+	}
+	pos = 0;
+	memcpy( _eth + pos, &eth, eths);
+	pos += eths;
+	memcpy( _eth + pos, &arp, arps);
+	pos += arps;
+	send_vnet( the_fd, _eth, _size);
+	getchar();
+	
 	return 0;
 }
 
@@ -278,6 +378,9 @@ int manage_eth( char *buf, int size)
 	{
 		case ETH_TYPE_IP:
 			manage_ip( buf + sizeof( *hdr), size - sizeof( *hdr));
+			break;
+		case ETH_TYPE_ARP:
+			manage_arp( buf + sizeof( *hdr), size - sizeof( *hdr));
 			break;
 		default:
 			printf( "unknown ethernet type 0x%04x\n", hdr->type);
