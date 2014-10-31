@@ -88,29 +88,36 @@ int main( int argc, char *argv[])
 		}
 		if ((ss != -1) && FD_ISSET( ss, &rfds))
 		{
-		memset( buf, 0, sizeof( buf));
-		n = recvfrom( ss, buf, sizeof( buf) - 1, 0, (struct sockaddr *)&usa, &ssa);
-		if (n == -1)
-		{
-			perror( "recvfrom");
-			exit( 1);
-		}
-		else if (n == 0)
-		{
-			printf( "hangup\n");
-			exit( 2);
-		}
-		printf( "recvfrom returned %d from %s\n", n, inet_ntoa( usa.sin_addr));
-		uint32_t size = n;
-		uint32_t nsize = htonl( size);
-		n = write( s, &nsize, sizeof( nsize));
-		n = write( s, buf, size);
+			memset( buf, 0, sizeof( buf));
+			n = recvfrom( ss, buf, sizeof( buf) - 1, 0, (struct sockaddr *)&usa, &ssa);
+			if (n == -1)
+			{
+				perror( "recvfrom");
+				exit( 1);
+			}
+			else if (n == 0)
+			{
+				printf( "hangup\n");
+				exit( 2);
+			}
+			printf( "recvfrom returned %d from %s\n", n, inet_ntoa( usa.sin_addr));
+			uint32_t size = n;
+			uint32_t nsize = htonl( size);
+			n = write( s, &nsize, sizeof( nsize));
+			n = write( s, buf, size);
 		}
 		
 		if ((s != -1) && FD_ISSET( s, &rfds))
 		{
 			uint32_t nsize = 0, size;
 			n = read( s, &nsize, sizeof( nsize));
+			printf( "read returned %d\n", n);
+			if (n == 0)
+			{
+				printf( "hangup\n");
+				close( s);
+				break;
+			}
 			size = ntohl( nsize);
 			n = read( s, buf, size);
 			

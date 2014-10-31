@@ -369,7 +369,6 @@ int manage_arp( char *buf, int size)
 	memcpy( _eth + pos, &arp, arps);
 	pos += arps;
 	send_vnet( the_fd, _eth, _size);
-	getchar();
 	
 	return 0;
 }
