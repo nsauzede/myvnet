@@ -84,6 +84,7 @@ typedef struct tftp {
 
 int send_vnet( int fd, char *buf, int size)
 {
+	int ret = 0;
 	uint32_t nsize;
 	int n;
 	printf( "%s: size=%d\n", __func__, size);
@@ -96,9 +97,12 @@ int send_vnet( int fd, char *buf, int size)
 	n = write( fd, &nsize, sizeof( nsize));
 	n = write( fd, buf, size);
 	if (n == -1)
+	{
 		perror( "write");
+		ret = 2;
+	}
 	
-	return 0;
+	return ret;
 }
 
 int the_fd = -1;
@@ -113,8 +117,47 @@ uint8_t cli_ip[4] = { 192, 168, 0, 11 };
 #define PRIzd "zd"
 #endif
 
+//#define USE_ENCAPS
+
+#ifdef USE_ENCAPS
+int send_eth( int fd, struct eth *hdr, void *buf, int bufsize)
+{
+	int ret;
+	char *ptr = malloc( sizeof( *hdr) + bufsize);
+	memcpy( ptr, hdr, sizeof( *hdr));
+	memcpy( ptr + sizeof( *hdr), buf, bufsize);
+	ret = send_vnet( fd, ptr, sizeof( *hdr) + bufsize);
+	free( ptr);
+	return ret;
+}
+int send_ip( int fd, struct ip *hdr, void *buf, int bufsize)
+{
+	int ret;
+	struct eth eth;
+	char *ptr = malloc( sizeof( *hdr) + bufsize);
+	memcpy( ptr, hdr, sizeof( *hdr));
+	memcpy( ptr + sizeof( *hdr), buf, bufsize);
+	ret = send_eth( fd, &eth, ptr, sizeof( *hdr) + bufsize);
+	free( ptr);
+	return ret;
+}
+int send_udp( int fd, struct udp *hdr, void *buf, int bufsize)
+{
+	int ret;
+	struct ip ip;
+	char *ptr = malloc( sizeof( *hdr) + bufsize);
+	memcpy( ptr, hdr, sizeof( *hdr));
+	memcpy( ptr + sizeof( *hdr), buf, bufsize);
+	ret = send_ip( fd, &ip, ptr, sizeof( *hdr) + bufsize);
+	free( ptr);
+	return ret;
+}
+#endif
+
 int manage_bootps( char *buf, int size)
 {
+	int ret = -1;
+	
 	struct bootp *hdr = (void *)buf;
 	printf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
 	if (size < sizeof( *hdr))
@@ -163,13 +206,7 @@ int manage_bootps( char *buf, int size)
 
 	struct bootp bootp;
 	int bootpcs = sizeof( bootp);
-	struct udp udp;
-	int udps = sizeof( udp);
-	struct ip ip;
-	int ips = sizeof( ip);
-	struct eth eth;
-	int eths = sizeof( eth);
-	
+
 	memset( &bootp, 0, bootpcs);
 	bootp.mtype = 2;
 	bootp.htype = 1;
@@ -203,10 +240,18 @@ int manage_bootps( char *buf, int size)
 	bootp.options[pos++] = 0xff;
 	strcpy( (char *)bootp.boot, "pxelinux.0");
 	
+	struct udp udp;
+	int udps = sizeof( udp);
+
 	memset( &udp, 0, udps);
 	udp.sport = htons( 67);
 	udp.dport = htons( 68);
 	udp.len = htons( udps + bootpcs);
+
+#ifndef USE_ENCAPS
+
+	struct ip ip;
+	int ips = sizeof( ip);
 
 	memset( &ip, 0, ips);
 	ip.version = 0x45;	// size ?
@@ -221,6 +266,9 @@ int manage_bootps( char *buf, int size)
 	}
 	_size += ips;
 
+	struct eth eth;
+	int eths = sizeof( eth);
+	
 	memset( &eth, 0, eths);
 	for (i = 0; i < 6; i++)
 	{
@@ -247,8 +295,16 @@ int manage_bootps( char *buf, int size)
 	memcpy( _eth + pos, &bootp, bootpcs);
 	pos += bootpcs;
 	send_vnet( the_fd, _eth, _size);
+
+#else
+	ret = send_udp( the_fd, &udp, &bootp, bootpcs))
+	if (ret)
+	{
+		printf( "%s: failed to send udp (%d)\n", __func__, ret);
+	}
+#endif
 	
-	return 0;
+	return ret;
 }
 
 int manage_tftp( char *buf, int size)
@@ -262,7 +318,6 @@ int manage_tftp( char *buf, int size)
 	}
 	
 	printf( "%s: opcode=%" PRIx16 "\n", __func__, hdr->opcode);
-//	getchar();
 	
 	return 0;
 }
