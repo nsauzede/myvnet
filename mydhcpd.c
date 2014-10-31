@@ -261,7 +261,8 @@ int manage_tftp( char *buf, int size)
 		return 1;
 	}
 	
-	getchar();
+	printf( "%s: opcode=%" PRIx16 "\n", __func__, hdr->opcode);
+//	getchar();
 	
 	return 0;
 }
