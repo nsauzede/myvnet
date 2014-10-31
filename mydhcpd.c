@@ -67,6 +67,12 @@ typedef struct bootp {
 	uint8_t options[300-66+32-4-10-64-128];
 } bootp_t;
 
+typedef struct tftp {
+	uint16_t opcode;
+	uint8_t file[11];
+	uint8_t type[6];
+} tftp_t;
+
 #pragma pack()
 
 #define MAX_ETH			1500
@@ -245,6 +251,21 @@ int manage_bootps( char *buf, int size)
 	return 0;
 }
 
+int manage_tftp( char *buf, int size)
+{
+	struct tftp *hdr = (void *)buf;
+	printf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
+	if (size < sizeof( *hdr))
+	{
+		printf( "not tftp ?\n");
+		return 1;
+	}
+	
+	getchar();
+	
+	return 0;
+}
+
 int manage_udp( char *buf, int size)
 {
 	struct udp *hdr = (void *)buf;
@@ -258,6 +279,9 @@ int manage_udp( char *buf, int size)
 	{
 		case 0x4300:
 			manage_bootps( buf + sizeof( *hdr), size - sizeof( *hdr));
+			break;
+		case 0x4500:
+			manage_tftp( buf + sizeof( *hdr), size - sizeof( *hdr));
 			break;
 		default:
 			printf( "unknown ip port 0x%01x\n", hdr->dport);
