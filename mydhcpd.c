@@ -64,7 +64,7 @@ typedef struct bootp {
 	uint8_t host[64];
 	uint8_t boot[128];
 	uint32_t magic;
-	uint8_t options[300-66+32-4-10-64-128];
+	uint8_t options[60];
 } bootp_t;
 
 typedef struct tftp {
