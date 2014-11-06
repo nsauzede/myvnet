@@ -46,7 +46,7 @@ typedef struct udp {
 	uint16_t sport;
 	uint16_t dport;
 	uint16_t len;
-	uint8_t pad1[2];
+	uint16_t checksum;
 } udp_t;
 
 typedef struct bootp {
@@ -69,9 +69,16 @@ typedef struct bootp {
 
 typedef struct tftp {
 	uint16_t opcode;
-	uint8_t file[11];
-	uint8_t type[6];
+	uint8_t data[17];
 } tftp_t;
+
+typedef struct tftp_data {
+	struct {
+	uint16_t opcode;
+	uint16_t blockn;
+	} hdr;
+	uint8_t data[512];
+} tftp_data_t;
 
 #pragma pack()
 
@@ -81,6 +88,10 @@ typedef struct tftp {
 #define ETH_TYPE_ARP	0x0608
 
 #define IP_PROTO_UDP	0x11
+
+#define UDP_PORT_BOOTP 67
+#define UDP_PORT_TFTP 69
+#define UDP_PORT_TFTP_READ 6900
 
 int send_vnet( int fd, char *buf, int size)
 {
@@ -119,7 +130,7 @@ uint8_t cli_ip[4] = { 192, 168, 0, 11 };
 
 //#define USE_ENCAPS
 
-#ifdef USE_ENCAPS
+//#ifdef USE_ENCAPS
 int send_eth( int fd, struct eth *hdr, void *buf, int bufsize)
 {
 	int ret;
@@ -130,29 +141,81 @@ int send_eth( int fd, struct eth *hdr, void *buf, int bufsize)
 	free( ptr);
 	return ret;
 }
+
 int send_ip( int fd, struct ip *hdr, void *buf, int bufsize)
 {
 	int ret;
 	struct eth eth;
 	char *ptr = malloc( sizeof( *hdr) + bufsize);
+	memset( &eth, 0, sizeof( eth));
+	eth.type = ETH_TYPE_IP;
+
+	if (!hdr->checksum)
+	{
+		int i;
+		uint32_t cks = 0;
+		for (i = 0; i < sizeof( *hdr) / 2; i++)
+		{
+			uint16_t d = ((uint16_t *)hdr)[i];
+			printf( "%s: checksumming : 0x%04" PRIx16 "\n", __func__, d);
+			cks += d;
+		}
+		hdr->checksum = ~((cks & 0xffff) + (cks >> 16));
+	}
+
 	memcpy( ptr, hdr, sizeof( *hdr));
 	memcpy( ptr + sizeof( *hdr), buf, bufsize);
 	ret = send_eth( fd, &eth, ptr, sizeof( *hdr) + bufsize);
 	free( ptr);
 	return ret;
 }
+
 int send_udp( int fd, struct udp *hdr, void *buf, int bufsize)
 {
 	int ret;
 	struct ip ip;
 	char *ptr = malloc( sizeof( *hdr) + bufsize);
+	int i;
+
+	memset( &ip, 0, sizeof( ip));
+	ip.version = 0x45;	// size ?
+	ip.len = htons( sizeof( ip) + sizeof( *hdr) + bufsize);
+	ip.ttl = 128;
+	ip.proto = IP_PROTO_UDP;
+	ip.checksum = 0;
+	for (i = 0; i < 4; i++)
+	{
+		ip.src[i] = the_ip[i];
+		ip.dst[i] = cli_ip[i];
+	}
+
+	if (!hdr->len)
+	{
+		hdr->len = htons( sizeof( *hdr) + bufsize);
+		printf( "%s: auto len, bufsize=%d, total=%" PRIu16 "\n", __func__, bufsize, ntohs( hdr->len));
+	}
+	printf( "%s: len=0x%04" PRIx16 "\n", __func__, hdr->len);
+	if (!hdr->checksum)
+	{
+		int i;
+		uint32_t cks = 0;
+		for (i = 0; i < sizeof( *hdr) / 2; i++)
+		{
+			uint16_t d = ((uint16_t *)hdr)[i];
+			printf( "%s: checksumming : 0x%04" PRIx16 "\n", __func__, d);
+			cks += d;
+		}
+		hdr->checksum = ~((cks & 0xffff) + (cks >> 16));
+	}
+	printf( "%s: checksum=0x%04" PRIx16 "\n", __func__, hdr->checksum);
+
 	memcpy( ptr, hdr, sizeof( *hdr));
 	memcpy( ptr + sizeof( *hdr), buf, bufsize);
 	ret = send_ip( fd, &ip, ptr, sizeof( *hdr) + bufsize);
 	free( ptr);
 	return ret;
 }
-#endif
+//#endif
 
 int manage_bootps( char *buf, int size)
 {
@@ -307,7 +370,7 @@ int manage_bootps( char *buf, int size)
 	return ret;
 }
 
-int manage_tftp( char *buf, int size)
+int manage_tftp( int sport, int dport, char *buf, int size)
 {
 	struct tftp *hdr = (void *)buf;
 	printf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
@@ -318,6 +381,59 @@ int manage_tftp( char *buf, int size)
 	}
 	
 	printf( "%s: opcode=%" PRIx16 "\n", __func__, hdr->opcode);
+	char *file = (char *)hdr->data;
+	char *mode = 0;
+	int len = strlen( file);
+	if (len)
+		mode = file + len + 1;
+	int is_read = 0;
+	static int read_sport = 0;
+	static int read_dport = 0;
+	if (dport == UDP_PORT_TFTP)
+	switch (hdr->opcode)
+	{
+#define TFTP_OPCODE_RRQ		0x100
+#define TFTP_OPCODE_WRQ		0x200
+#define TFTP_OPCODE_DATA	0x300
+#define TFTP_OPCODE_ACQ		0x400
+#define TFTP_OPCODE_ERROR	0x500
+		case TFTP_OPCODE_RRQ:	//RRQ
+			printf( "RRQ: file=%s mode=%s\n", file, mode);
+			is_read = 1;
+			break;
+		default:
+			printf( "%s: unknown opcode %" PRIx16 "\n", __func__, hdr->opcode);
+			break;
+	}
+	
+	if (is_read)
+	{
+		printf( "READ: sport=%d dport=%d\n", sport, dport);
+		if (read_sport == 0)
+		{
+			read_sport = sport;
+			dport = read_dport = UDP_PORT_TFTP_READ;
+		}
+		
+		if (dport == UDP_PORT_TFTP_READ)
+		{
+			printf( "about to send DATA\n");
+			static int blockn = 1;
+			int len = 0;
+			struct tftp_data tftp_data;
+			memset( &tftp_data, 0, sizeof( tftp_data));
+			tftp_data.hdr.opcode = TFTP_OPCODE_DATA;
+			tftp_data.hdr.blockn = blockn++;
+			tftp_data.data[len++] = 0xCD;
+			tftp_data.data[len++] = 0x19;
+			
+			struct udp udp;
+			memset( &udp, 0, sizeof( udp));
+			udp.sport = htons( read_dport);
+			udp.dport = htons( read_sport);
+			send_udp( the_fd, &udp, &tftp_data, sizeof( tftp_data.hdr) + len);
+		}
+	}
 	
 	return 0;
 }
@@ -331,13 +447,14 @@ int manage_udp( char *buf, int size)
 		printf( "not ip ?\n");
 		return 1;
 	}
-	switch (hdr->dport)
+	switch (ntohs( hdr->dport))
 	{
-		case 0x4300:
+		case UDP_PORT_BOOTP:
 			manage_bootps( buf + sizeof( *hdr), size - sizeof( *hdr));
 			break;
-		case 0x4500:
-			manage_tftp( buf + sizeof( *hdr), size - sizeof( *hdr));
+		case UDP_PORT_TFTP:
+		case UDP_PORT_TFTP_READ:
+			manage_tftp( ntohs( hdr->sport), ntohs( hdr->dport), buf + sizeof( *hdr), size - sizeof( *hdr));
 			break;
 		default:
 			printf( "unknown ip port 0x%01x\n", hdr->dport);
