@@ -206,7 +206,8 @@ int send_udp( int fd, struct udp *hdr, void *buf, int bufsize)
 			cks += d;
 		}
 //		hdr->checksum = ~((cks & 0xffff) + (cks >> 16));
-		hdr->checksum = 0x4d8e;
+//		hdr->checksum = 0x4d8e;
+		hdr->checksum = 0;
 	}
 	printf( "%s: checksum=0x%04" PRIx16 "\n", __func__, hdr->checksum);
 
