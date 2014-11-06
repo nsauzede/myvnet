@@ -126,7 +126,12 @@ int main( int argc, char *argv[])
 	}
 	
 	fprintf( stderr, "connecting to %s:%d..\n\n", host, port);
-	fprintf( stderr, "sizeof(void*)=%zd sizeof(file_header)=%zd sizeof(pkthdr)=%zd\n", sizeof( void *), sizeof( struct pcap_file_header), sizeof( struct pcap_pkthdr));
+#ifdef WIN32
+#define PRIzd "d"
+#else
+#define PRIzd "zd"
+#endif
+	fprintf( stderr, "sizeof(void*)=%" PRIzd " sizeof(file_header)=%" PRIzd " sizeof(pkthdr)=%" PRIzd "\n", sizeof( void *), sizeof( struct pcap_file_header), sizeof( struct pcap_pkthdr));
 	s = socket( PF_INET, SOCK_STREAM, 0);
 	memset( &sa, 0, sizeof( sa));
 	sa.sin_family = AF_INET;
@@ -162,7 +167,7 @@ int main( int argc, char *argv[])
 		size = ntohl( nsize);
 		if (size > sizeof( buf))
 		{
-			fprintf( stderr, "read packet too big (max=%zd read=%d)\n", sizeof( buf), size);
+			fprintf( stderr, "read packet too big (max=%" PRIzd " read=%d)\n", sizeof( buf), size);
 			exit( 1);
 		}
 		gettimeofday( &tv, 0);
