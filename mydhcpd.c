@@ -205,7 +205,8 @@ int send_udp( int fd, struct udp *hdr, void *buf, int bufsize)
 			printf( "%s: checksumming : 0x%04" PRIx16 "\n", __func__, d);
 			cks += d;
 		}
-		hdr->checksum = ~((cks & 0xffff) + (cks >> 16));
+//		hdr->checksum = ~((cks & 0xffff) + (cks >> 16));
+		hdr->checksum = 0x4d8e;
 	}
 	printf( "%s: checksum=0x%04" PRIx16 "\n", __func__, hdr->checksum);
 
@@ -423,7 +424,7 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 			struct tftp_data tftp_data;
 			memset( &tftp_data, 0, sizeof( tftp_data));
 			tftp_data.hdr.opcode = TFTP_OPCODE_DATA;
-			tftp_data.hdr.blockn = blockn++;
+			tftp_data.hdr.blockn = htons( blockn++);
 			tftp_data.data[len++] = 0xCD;
 			tftp_data.data[len++] = 0x19;
 			
