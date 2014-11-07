@@ -10,6 +10,8 @@
 int main( int argc, char *argv[])
 {
 	int uport = 10001;
+	int cuport = 0;
+	char *cli = "127.0.0.1";
 	char *srv = 0;
 	int port = 12346;
 	int n, ss, s;
@@ -25,13 +27,21 @@ int main( int argc, char *argv[])
 			if (arg < argc)
 			{
 				sscanf( argv[arg++], "%d", &port);
+				if (arg < argc)
+				{
+					sscanf( argv[arg++], "%d", &cuport);
+					if (arg < argc)
+					{
+						cli = argv[arg++];
+					}
+				}
 			}
 		}
 	}
 	
 	if (!srv)
 	{
-		printf( "Usage: %s <UDP_port> <TCP_srv> <TCP_port>\n", argv[0]);
+		printf( "Usage: %s <UDP_port> <TCP_srv> <TCP_port> [UDP_port_cli [UDP_cli]]\n", argv[0]);
 		exit( 1);
 	}
 	
@@ -60,6 +70,14 @@ int main( int argc, char *argv[])
 		exit( 1);
 	}
 	printf( "bound to listen on UDP port %d..\n", uport);
+	if (cuport)
+	{
+		printf( "forcing UDP client ip %s port %d\n", cli, cuport);
+		memset( &usa, 0, sizeof( usa));
+		usa.sin_family = AF_INET;
+		usa.sin_port = htons( cuport);
+		usa.sin_addr.s_addr = inet_addr( cli);
+	}
 	while (1)
 	{
 		socklen_t ssa = sizeof( usa);

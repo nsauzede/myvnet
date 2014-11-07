@@ -55,10 +55,12 @@ typedef struct bootp {
 	uint8_t halen;
 	uint8_t hops;
 	uint32_t tid;
-	uint8_t pad0[8];
+	uint8_t pad0[2];
+	uint16_t flags;
+	uint8_t pad1[4];
 	uint8_t cli_ip[4];
 	uint8_t srv_ip[4];
-	uint8_t pad1[4];
+	uint8_t pad2[4];
 	uint8_t cli_mac[6];
 	uint8_t mac_pad2[10];
 	uint8_t host[64];
@@ -82,7 +84,7 @@ typedef struct tftp_data {
 
 #pragma pack()
 
-#define MAX_ETH			1500
+#define MAX_ETH			1502
 
 #define ETH_TYPE_IP		0x0008
 #define ETH_TYPE_ARP	0x0608
@@ -91,7 +93,7 @@ typedef struct tftp_data {
 
 #define UDP_PORT_BOOTP 67
 #define UDP_PORT_TFTP 69
-#define UDP_PORT_TFTP_READ 6900
+#define UDP_PORT_TFTP_READ 49008
 
 int send_vnet( int fd, char *buf, int size)
 {
@@ -117,10 +119,12 @@ int send_vnet( int fd, char *buf, int size)
 }
 
 int the_fd = -1;
-uint8_t the_mac[6] = { 0x52, 0x54, 0x00, 0x12, 0x34, 0x56 };
+//uint8_t the_mac[6] = { 0x52, 0x54, 0x00, 0x12, 0x34, 0x56 };
+uint8_t the_mac[6] = { 0x08, 0x00, 0x27, 0xcb, 0x80, 0x2a };
 uint8_t the_ip[4] = { 192, 168, 0, 1 };
 
-uint8_t cli_ip[4] = { 192, 168, 0, 11 };
+uint8_t cli_mac[6] = { 0, 0, 0, 0, 0, 0 };
+uint8_t cli_ip[4] = { 192, 168, 0, 10 };
 
 #ifdef WIN32
 #define PRIzd "d"
@@ -135,6 +139,23 @@ int send_eth( int fd, struct eth *hdr, void *buf, int bufsize)
 {
 	int ret;
 	char *ptr = malloc( sizeof( *hdr) + bufsize);
+	uint8_t null_mac[6] = { 0, 0, 0, 0, 0, 0 };
+	int i;
+
+	if (!memcmp( hdr->src, null_mac, sizeof( hdr->src)))
+	{
+		for (i = 0; i < sizeof( hdr->src); i++)
+		{
+			hdr->src[i] = the_mac[i];
+		}
+	}
+	if (!memcmp( hdr->dst, null_mac, sizeof( hdr->dst)))
+	{
+		for (i = 0; i < sizeof( hdr->dst); i++)
+		{
+			hdr->dst[i] = cli_mac[i];
+		}
+	}
 	memcpy( ptr, hdr, sizeof( *hdr));
 	memcpy( ptr + sizeof( *hdr), buf, bufsize);
 	ret = send_vnet( fd, ptr, sizeof( *hdr) + bufsize);
@@ -147,9 +168,35 @@ int send_ip( int fd, struct ip *hdr, void *buf, int bufsize)
 	int ret;
 	struct eth eth;
 	char *ptr = malloc( sizeof( *hdr) + bufsize);
-	memset( &eth, 0, sizeof( eth));
-	eth.type = ETH_TYPE_IP;
+	uint8_t null_ip[4] = { 0, 0, 0, 0 };
+	int i;
 
+	if (!memcmp( hdr->src, null_ip, sizeof( hdr->src)))
+	{
+		for (i = 0; i < sizeof( hdr->src); i++)
+		{
+			hdr->src[i] = the_ip[i];
+		}
+	}
+	if (!memcmp( hdr->dst, null_ip, sizeof( hdr->dst)))
+	{
+		for (i = 0; i < sizeof( hdr->dst); i++)
+		{
+			hdr->dst[i] = cli_ip[i];
+		}
+	}
+	if (!hdr->ttl)
+	{
+		hdr->ttl = 128;
+	}
+	if (!hdr->version)
+	{
+		hdr->version = 0x45;	// size ?
+	}
+	if (!hdr->len)
+	{
+		hdr->len = htons( sizeof( *hdr) + bufsize);
+	}
 	if (!hdr->checksum)
 	{
 		int i;
@@ -163,6 +210,8 @@ int send_ip( int fd, struct ip *hdr, void *buf, int bufsize)
 		hdr->checksum = ~((cks & 0xffff) + (cks >> 16));
 	}
 
+	memset( &eth, 0, sizeof( eth));
+	eth.type = ETH_TYPE_IP;
 	memcpy( ptr, hdr, sizeof( *hdr));
 	memcpy( ptr + sizeof( *hdr), buf, bufsize);
 	ret = send_eth( fd, &eth, ptr, sizeof( *hdr) + bufsize);
@@ -175,19 +224,9 @@ int send_udp( int fd, struct udp *hdr, void *buf, int bufsize)
 	int ret;
 	struct ip ip;
 	char *ptr = malloc( sizeof( *hdr) + bufsize);
-	int i;
 
 	memset( &ip, 0, sizeof( ip));
-	ip.version = 0x45;	// size ?
-	ip.len = htons( sizeof( ip) + sizeof( *hdr) + bufsize);
-	ip.ttl = 128;
 	ip.proto = IP_PROTO_UDP;
-	ip.checksum = 0;
-	for (i = 0; i < 4; i++)
-	{
-		ip.src[i] = the_ip[i];
-		ip.dst[i] = cli_ip[i];
-	}
 
 	if (!hdr->len)
 	{
@@ -195,6 +234,7 @@ int send_udp( int fd, struct udp *hdr, void *buf, int bufsize)
 		printf( "%s: auto len, bufsize=%d, total=%" PRIu16 "\n", __func__, bufsize, ntohs( hdr->len));
 	}
 	printf( "%s: len=0x%04" PRIx16 "\n", __func__, hdr->len);
+#if 0
 	if (!hdr->checksum)
 	{
 		int i;
@@ -210,6 +250,7 @@ int send_udp( int fd, struct udp *hdr, void *buf, int bufsize)
 		hdr->checksum = 0;
 	}
 	printf( "%s: checksum=0x%04" PRIx16 "\n", __func__, hdr->checksum);
+#endif
 
 	memcpy( ptr, hdr, sizeof( *hdr));
 	memcpy( ptr + sizeof( *hdr), buf, bufsize);
@@ -277,6 +318,7 @@ int manage_bootps( char *buf, int size)
 	bootp.htype = 1;
 	bootp.halen = 6;
 	bootp.tid = hdr->tid;
+	bootp.flags = 0x80;		// broadcast
 	for (i = 0; i < 4; i++)
 	{
 		bootp.cli_ip[i] = cli_ip[i];
@@ -317,17 +359,20 @@ int manage_bootps( char *buf, int size)
 
 	struct ip ip;
 	int ips = sizeof( ip);
+	uint8_t bcast_ip[4] = { 255, 255, 255, 255 };
+	uint8_t bcast_mac[6] = { 255, 255, 255, 255, 255, 255 };
 
 	memset( &ip, 0, ips);
 	ip.version = 0x45;	// size ?
 	ip.len = htons( ips + udps + bootpcs);
 	ip.ttl = 128;
 	ip.proto = IP_PROTO_UDP;
-	ip.checksum = htons( 0xb848);
+	ip.checksum = htons( 0x78fc);
 	for (i = 0; i < 4; i++)
 	{
 		ip.src[i] = the_ip[i];
-		ip.dst[i] = cli_ip[i];
+//		ip.dst[i] = cli_ip[i];
+		ip.dst[i] = bcast_ip[i];
 	}
 	_size += ips;
 
@@ -337,7 +382,8 @@ int manage_bootps( char *buf, int size)
 	memset( &eth, 0, eths);
 	for (i = 0; i < 6; i++)
 	{
-		eth.dst[i] = cli[i];
+//		eth.dst[i] = cli[i];
+		eth.dst[i] = bcast_mac[i];
 		eth.src[i] = the_mac[i];
 	}
 	eth.type = 0x0008;
@@ -419,15 +465,42 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 		
 		if (dport == UDP_PORT_TFTP_READ)
 		{
-			printf( "about to send DATA\n");
 			static int blockn = 1;
-			int len = 0;
+			static int len = 0;
 			struct tftp_data tftp_data;
 			memset( &tftp_data, 0, sizeof( tftp_data));
 			tftp_data.hdr.opcode = TFTP_OPCODE_DATA;
-			tftp_data.hdr.blockn = htons( blockn++);
-			tftp_data.data[len++] = 0xCD;
-			tftp_data.data[len++] = 0x19;
+			tftp_data.hdr.blockn = htons( blockn);
+	
+			static FILE *fd = 0;
+			static int fsize = 0;
+			static int todo = 0;
+			if (blockn == 1)
+			{
+				fd = fopen( "pxelinux.0", "rb");
+				fseek( fd, 0, SEEK_END);
+				todo = fsize = ftell( fd);
+				rewind( fd);
+				len = sizeof( tftp_data.data);
+			}
+			if (len > todo)
+			{
+				len = todo;
+			}
+			fread( tftp_data.data, len, 1, fd);
+			if (todo == 0)
+			{
+				len = 0;
+				blockn = 1;
+				fclose( fd);
+				fd = 0;
+			}
+			else
+			{
+				todo -= len;
+				blockn++;
+			}
+			printf( "about to send DATA, len=%d fd=%p\n", len, fd);
 			
 			struct udp udp;
 			memset( &udp, 0, sizeof( udp));
@@ -575,11 +648,16 @@ int manage_arp( char *buf, int size)
 int manage_eth( char *buf, int size)
 {
 	struct eth *hdr = (void *)buf;
+	int i;
 	printf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
 	if (size < sizeof( *hdr))
 	{
 		printf( "not ethernet ?\n");
 		return 1;
+	}
+	for (i = 0; i < sizeof( hdr->src); i++)
+	{
+		cli_mac[i] = hdr->src[i];
 	}
 	switch (hdr->type)
 	{
