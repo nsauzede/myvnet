@@ -29,6 +29,7 @@
 #define PCAP_MAJOR 2
 #define PCAP_MINOR 4
 
+#pragma pack(1)
 struct pcap_file_header {
 	uint32_t magic;
 	uint16_t version_major;
@@ -43,6 +44,7 @@ struct pcap_pkthdr {
 	uint32_t caplen;		/* length of portion present */
 	uint32_t len;			/* length this packet (off wire) */
 };
+#pragma pack()
 
 int pcap_write_file_header( FILE *f, int ts_nsec, int snaplen, int linktype)
 {
