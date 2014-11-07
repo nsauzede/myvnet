@@ -22,6 +22,12 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#ifdef WIN32
+#define PRIzd "d"
+#else
+#define PRIzd "zd"
+#endif
+
 // http://www.iana.org/assignments/media-types/application/vnd.tcpdump.pcap
 // http://www.tcpdump.org/manpages/pcap-savefile.5.txt
 #define PCAP_MAGIC			0xa1b2c3d4
@@ -128,11 +134,6 @@ int main( int argc, char *argv[])
 	}
 	
 	fprintf( stderr, "connecting to %s:%d..\n\n", host, port);
-#ifdef WIN32
-#define PRIzd "d"
-#else
-#define PRIzd "zd"
-#endif
 	fprintf( stderr, "sizeof(void*)=%" PRIzd " sizeof(file_header)=%" PRIzd " sizeof(pkthdr)=%" PRIzd "\n", sizeof( void *), sizeof( struct pcap_file_header), sizeof( struct pcap_pkthdr));
 	s = socket( PF_INET, SOCK_STREAM, 0);
 	memset( &sa, 0, sizeof( sa));
@@ -147,6 +148,9 @@ int main( int argc, char *argv[])
 	}
 	pcap_write_file_header( f, ts_nsec, snaplen, linktype);
 	fflush( f);
+#ifdef WIN32
+	setmode( fileno( f));	// Turn output file to "binary". Ahh, windows.. <sigh>
+#endif
 	while (1)
 	{
 		unsigned char buf[1600];
