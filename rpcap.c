@@ -23,6 +23,11 @@
 #include <arpa/inet.h>
 
 #ifdef WIN32
+#define O_BINARY 0x8000
+int _setmode( int, int);
+#endif
+
+#ifdef WIN32
 #define PRIzd "d"
 #else
 #define PRIzd "zd"
@@ -146,11 +151,19 @@ int main( int argc, char *argv[])
 		fprintf( stderr, "couldn't connect to port %d (%s)\n", port, strerror( errno));
 		exit( 1);
 	}
+
+#ifdef WIN32
+	if (f == stdout)
+	{
+		fprintf( stderr, "WIN32 kludge to turn stdout into binary\n");
+		int fd = fileno( stdout);
+		fprintf( stderr, "fd=%d\n", fd);
+		_setmode( fd, O_BINARY);	// Turn stdout to "binary". Ahh, windows.. <sigh>
+		fprintf( stderr, "errno=%d\n", errno);
+	}
+#endif
 	pcap_write_file_header( f, ts_nsec, snaplen, linktype);
 	fflush( f);
-#ifdef WIN32
-	setmode( fileno( f));	// Turn output file to "binary". Ahh, windows.. <sigh>
-#endif
 	while (1)
 	{
 		unsigned char buf[1600];
