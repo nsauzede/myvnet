@@ -71,7 +71,7 @@ typedef struct bootp {
 
 typedef struct tftp {
 	uint16_t opcode;
-	uint8_t data[17];
+	uint8_t data[];
 } tftp_t;
 
 typedef struct tftp_data {
@@ -80,6 +80,7 @@ typedef struct tftp_data {
 	uint16_t blockn;
 	} hdr;
 	uint8_t data[512];
+//	uint8_t data[1456];
 } tftp_data_t;
 
 #pragma pack()
@@ -260,6 +261,139 @@ int send_udp( int fd, struct udp *hdr, void *buf, int bufsize)
 }
 //#endif
 
+int manage_tftp( int sport, int dport, char *buf, int size)
+{
+	struct tftp *hdr = (void *)buf;
+	printf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
+	if (size < sizeof( *hdr))
+	{
+		printf( "not tftp ?\n");
+		return 1;
+	}
+	
+	printf( "%s: opcode=%" PRIx16 "\n", __func__, hdr->opcode);
+	char *file = (char *)hdr->data;
+	char *mode = 0;
+	int len = strlen( file);
+	if (len)
+		mode = file + len + 1;
+	int is_read = 0, is_error = 0;
+	static int read_sport = 0;
+	static int read_dport = 0;
+	int last = 0;
+	static int blockn = 1;
+	switch (hdr->opcode)
+	{
+#define TFTP_OPCODE_RRQ		0x100
+#define TFTP_OPCODE_WRQ		0x200
+#define TFTP_OPCODE_DATA	0x300
+#define TFTP_OPCODE_ACQ		0x400
+#define TFTP_OPCODE_ERROR	0x500
+		case TFTP_OPCODE_RRQ:	//RRQ
+			printf( "RRQ: file=%s mode=%s\n", file, mode);
+			if ((dport == UDP_PORT_TFTP) && (!read_sport))
+				is_read = 1;
+			break;
+		case TFTP_OPCODE_ACQ:	//ACQ
+		{
+			uint16_t block;
+			block = ntohs( *(uint16_t *)hdr->data);
+			printf( "ACQ: block=%d blockn=%d\n", block, blockn);
+			if (last != 1)
+			if (block == blockn)
+			{
+				is_read = 1;
+				blockn++;
+			}
+			break;
+		}
+		default:
+			printf( "%s: unknown opcode %" PRIx16 "\n", __func__, hdr->opcode);
+			break;
+	}
+	
+	if (is_read)
+	{
+		printf( "READ: sport=%d dport=%d\n", sport, dport);
+		if (read_sport == 0)
+		{
+			read_sport = sport;
+			dport = read_dport = UDP_PORT_TFTP_READ;
+		}
+		
+		if (dport == UDP_PORT_TFTP_READ)
+		{
+			static int len = 0;
+			struct tftp_data tftp_data;
+			memset( &tftp_data, 0, sizeof( tftp_data));
+			tftp_data.hdr.opcode = TFTP_OPCODE_DATA;
+			tftp_data.hdr.blockn = htons( blockn);
+	
+			static FILE *fd = 0;
+			static int fsize = 0;
+			static int todo = 0;
+			if (blockn == 1)
+			{
+				last = 0;
+//				fd = fopen( "pxelinux.0", "rb");
+				fd = fopen( file, "rb");
+				if (!fd)
+				{
+					perror( "fopen");
+					is_error = 1;
+					tftp_data.hdr.opcode = TFTP_OPCODE_ERROR;
+					tftp_data.data[len++] = 0;
+					tftp_data.data[len++] = 1;
+					read_sport = 0;
+					blockn = 1;
+				}
+				else
+				{
+					fseek( fd, 0, SEEK_END);
+					todo = fsize = ftell( fd);
+					rewind( fd);
+					len = sizeof( tftp_data.data);
+				}
+			}
+			if (fd)
+			{
+				if (len > todo)
+				{
+					len = todo;
+				}
+				fread( tftp_data.data, len, 1, fd);
+				if (todo == 0)
+				{
+					len = 0;
+					blockn = 1;
+					fclose( fd);
+					fd = 0;
+					read_sport = 0;
+					last = 1;
+//					asm volatile ("int $3");
+				}
+				else
+				{
+					todo -= len;
+//					blockn++;	// this will be done in next ACQ
+				}
+			}
+			if (!last)
+			{
+			printf( "about to send %s, len=%d fd=%p\n", tftp_data.hdr.opcode == TFTP_OPCODE_DATA ? "DATA" : "ERROR", len, fd);
+
+			struct udp udp;
+			memset( &udp, 0, sizeof( udp));
+			udp.sport = htons( read_dport);
+			udp.dport = htons( read_sport);
+			send_udp( the_fd, &udp, &tftp_data, sizeof( tftp_data.hdr) + len);
+			}
+		}
+	}
+	
+	return 0;
+}
+
 int manage_bootps( char *buf, int size)
 {
 	int ret = -1;
@@ -416,101 +550,6 @@ int manage_bootps( char *buf, int size)
 #endif
 	
 	return ret;
-}
-
-int manage_tftp( int sport, int dport, char *buf, int size)
-{
-	struct tftp *hdr = (void *)buf;
-	printf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
-	if (size < sizeof( *hdr))
-	{
-		printf( "not tftp ?\n");
-		return 1;
-	}
-	
-	printf( "%s: opcode=%" PRIx16 "\n", __func__, hdr->opcode);
-	char *file = (char *)hdr->data;
-	char *mode = 0;
-	int len = strlen( file);
-	if (len)
-		mode = file + len + 1;
-	int is_read = 0;
-	static int read_sport = 0;
-	static int read_dport = 0;
-	if (dport == UDP_PORT_TFTP)
-	switch (hdr->opcode)
-	{
-#define TFTP_OPCODE_RRQ		0x100
-#define TFTP_OPCODE_WRQ		0x200
-#define TFTP_OPCODE_DATA	0x300
-#define TFTP_OPCODE_ACQ		0x400
-#define TFTP_OPCODE_ERROR	0x500
-		case TFTP_OPCODE_RRQ:	//RRQ
-			printf( "RRQ: file=%s mode=%s\n", file, mode);
-			is_read = 1;
-			break;
-		default:
-			printf( "%s: unknown opcode %" PRIx16 "\n", __func__, hdr->opcode);
-			break;
-	}
-	
-	if (is_read)
-	{
-		printf( "READ: sport=%d dport=%d\n", sport, dport);
-		if (read_sport == 0)
-		{
-			read_sport = sport;
-			dport = read_dport = UDP_PORT_TFTP_READ;
-		}
-		
-		if (dport == UDP_PORT_TFTP_READ)
-		{
-			static int blockn = 1;
-			static int len = 0;
-			struct tftp_data tftp_data;
-			memset( &tftp_data, 0, sizeof( tftp_data));
-			tftp_data.hdr.opcode = TFTP_OPCODE_DATA;
-			tftp_data.hdr.blockn = htons( blockn);
-	
-			static FILE *fd = 0;
-			static int fsize = 0;
-			static int todo = 0;
-			if (blockn == 1)
-			{
-				fd = fopen( "pxelinux.0", "rb");
-				fseek( fd, 0, SEEK_END);
-				todo = fsize = ftell( fd);
-				rewind( fd);
-				len = sizeof( tftp_data.data);
-			}
-			if (len > todo)
-			{
-				len = todo;
-			}
-			fread( tftp_data.data, len, 1, fd);
-			if (todo == 0)
-			{
-				len = 0;
-				blockn = 1;
-				fclose( fd);
-				fd = 0;
-			}
-			else
-			{
-				todo -= len;
-				blockn++;
-			}
-			printf( "about to send DATA, len=%d fd=%p\n", len, fd);
-			
-			struct udp udp;
-			memset( &udp, 0, sizeof( udp));
-			udp.sport = htons( read_dport);
-			udp.dport = htons( read_sport);
-			send_udp( the_fd, &udp, &tftp_data, sizeof( tftp_data.hdr) + len);
-		}
-	}
-	
-	return 0;
 }
 
 int manage_udp( char *buf, int size)
