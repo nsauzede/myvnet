@@ -133,7 +133,7 @@ uint8_t cli_ip[4] = { 192, 168, 0, 10 };
 #define PRIzd "zd"
 #endif
 
-//#define USE_ENCAPS
+#define USE_ENCAPS
 
 //#ifdef USE_ENCAPS
 int send_eth( int fd, struct eth *hdr, void *buf, int bufsize)
@@ -205,7 +205,7 @@ int send_ip( int fd, struct ip *hdr, void *buf, int bufsize)
 		for (i = 0; i < sizeof( *hdr) / 2; i++)
 		{
 			uint16_t d = ((uint16_t *)hdr)[i];
-			printf( "%s: checksumming : 0x%04" PRIx16 "\n", __func__, d);
+//			printf( "%s: checksumming : 0x%04" PRIx16 "\n", __func__, d);
 			cks += d;
 		}
 		hdr->checksum = ~((cks & 0xffff) + (cks >> 16));
@@ -380,12 +380,15 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 			}
 			if (!last)
 			{
-			printf( "about to send %s, len=%d fd=%p\n", tftp_data.hdr.opcode == TFTP_OPCODE_DATA ? "DATA" : "ERROR", len, fd);
+			printf( "about to send %s, len=%d fd=%p, sport=%d dport=%d\n", tftp_data.hdr.opcode == TFTP_OPCODE_DATA ? "DATA" : "ERROR", len, fd, sport, dport);
 
 			struct udp udp;
 			memset( &udp, 0, sizeof( udp));
 			udp.sport = htons( read_dport);
-			udp.dport = htons( read_sport);
+			if (!read_sport)
+				udp.dport = htons( sport);
+			else
+				udp.dport = htons( read_sport);
 			send_udp( the_fd, &udp, &tftp_data, sizeof( tftp_data.hdr) + len);
 			}
 		}
@@ -441,9 +444,6 @@ int manage_bootps( char *buf, int size)
 	}
 	printf( "DHCP %s\n", disc ? "Discovery" : "Request");
 	
-	char _eth[MAX_ETH];
-	int _size = 0;
-
 	struct bootp bootp;
 	int bootpcs = sizeof( bootp);
 
@@ -487,9 +487,12 @@ int manage_bootps( char *buf, int size)
 	memset( &udp, 0, udps);
 	udp.sport = htons( 67);
 	udp.dport = htons( 68);
-	udp.len = htons( udps + bootpcs);
-
+	
 #ifndef USE_ENCAPS
+	char _eth[MAX_ETH];
+	int _size = 0;
+
+	udp.len = htons( udps + bootpcs);
 
 	struct ip ip;
 	int ips = sizeof( ip);
@@ -542,7 +545,7 @@ int manage_bootps( char *buf, int size)
 	send_vnet( the_fd, _eth, _size);
 
 #else
-	ret = send_udp( the_fd, &udp, &bootp, bootpcs))
+	ret = send_udp( the_fd, &udp, &bootp, bootpcs);
 	if (ret)
 	{
 		printf( "%s: failed to send udp (%d)\n", __func__, ret);
