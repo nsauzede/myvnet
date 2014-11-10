@@ -294,6 +294,13 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 			if ((dport == UDP_PORT_TFTP) && (!read_sport))
 				is_read = 1;
 			break;
+		case TFTP_OPCODE_ERROR:
+		{
+			uint16_t code = *(uint16_t *)(hdr->data + 2);
+			printf( "ERROR: code=%" PRIx16 "\n", code);
+			read_sport = 0;
+			break;
+		}
 		case TFTP_OPCODE_ACQ:	//ACQ
 		{
 			uint16_t block;
