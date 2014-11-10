@@ -277,7 +277,7 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 	int len = strlen( file);
 	if (len)
 		mode = file + len + 1;
-	int is_read = 0, is_error = 0;
+	int is_read = 0;
 	static int read_sport = 0;
 	static int read_dport = 0;
 	int last = 0;
@@ -340,7 +340,6 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 				if (!fd)
 				{
 					perror( "fopen");
-					is_error = 1;
 					tftp_data.hdr.opcode = TFTP_OPCODE_ERROR;
 					tftp_data.data[len++] = 0;
 					tftp_data.data[len++] = 1;
