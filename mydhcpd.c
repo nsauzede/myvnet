@@ -80,7 +80,6 @@ typedef struct tftp_data {
 	uint16_t blockn;
 	} hdr;
 	uint8_t data[512];
-//	uint8_t data[1456];
 } tftp_data_t;
 
 #pragma pack()
@@ -120,7 +119,6 @@ int send_vnet( int fd, char *buf, int size)
 }
 
 int the_fd = -1;
-//uint8_t the_mac[6] = { 0x52, 0x54, 0x00, 0x12, 0x34, 0x56 };
 uint8_t the_mac[6] = { 0x08, 0x00, 0x27, 0xcb, 0x80, 0x2a };
 uint8_t the_ip[4] = { 192, 168, 0, 1 };
 
@@ -202,7 +200,6 @@ int send_ip( int fd, struct ip *hdr, void *buf, int bufsize)
 		for (i = 0; i < sizeof( *hdr) / 2; i++)
 		{
 			uint16_t d = ((uint16_t *)hdr)[i];
-//			printf( "%s: checksumming : 0x%04" PRIx16 "\n", __func__, d);
 			cks += d;
 		}
 		hdr->checksum = ~((cks & 0xffff) + (cks >> 16));
@@ -232,10 +229,7 @@ int send_udp( int fd, struct udp *hdr, void *buf, int bufsize)
 		printf( "%s: auto len, bufsize=%d, total=%" PRIu16 "\n", __func__, bufsize, ntohs( hdr->len));
 	}
 	printf( "%s: len=0x%04" PRIx16 "\n", __func__, hdr->len);
-	// XXX TODO : UDP checksum ? see here : 
-	// http://stackoverflow.com/questions/1480580/udp-checksum-calculation
-	// http://www.frameip.com/entete-udp/#3.4_-_Checksum
-	// http://www.faqs.org/rfcs/rfc768.html
+	// XXX UDP checksum ? http://stackoverflow.com/questions/1480580/udp-checksum-calculation, http://www.frameip.com/entete-udp/#3.4_-_Checksum, http://www.faqs.org/rfcs/rfc768.html
 
 	memcpy( ptr, hdr, sizeof( *hdr));
 	memcpy( ptr + sizeof( *hdr), buf, bufsize);
@@ -325,7 +319,6 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 			if (blockn == 1)
 			{
 				last = 0;
-//				fd = fopen( "pxelinux.0", "rb");
 				fd = fopen( file, "rb");
 				if (!fd)
 				{
@@ -359,12 +352,10 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 					fd = 0;
 					read_sport = 0;
 					last = 1;
-//					asm volatile ("int $3");
 				}
 				else
 				{
 					todo -= len;
-//					blockn++;	// this will be done in next ACQ
 				}
 			}
 			if (!last)
