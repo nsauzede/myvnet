@@ -594,7 +594,7 @@ int manage_arp( char *buf, int size)
 		eth.dst[i] = cli[i];
 		eth.src[i] = the_mac[i];
 	}
-	eth.type = 0x0608;
+	eth.type = ETH_TYPE_ARP;
 	send_eth( the_fd, &eth, &arp, sizeof( arp));
 
 	return 0;
