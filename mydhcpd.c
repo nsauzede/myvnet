@@ -133,9 +133,6 @@ uint8_t cli_ip[4] = { 192, 168, 0, 10 };
 #define PRIzd "zd"
 #endif
 
-#define USE_ENCAPS
-
-//#ifdef USE_ENCAPS
 int send_eth( int fd, struct eth *hdr, void *buf, int bufsize)
 {
 	int ret;
@@ -235,23 +232,10 @@ int send_udp( int fd, struct udp *hdr, void *buf, int bufsize)
 		printf( "%s: auto len, bufsize=%d, total=%" PRIu16 "\n", __func__, bufsize, ntohs( hdr->len));
 	}
 	printf( "%s: len=0x%04" PRIx16 "\n", __func__, hdr->len);
-#if 0
-	if (!hdr->checksum)
-	{
-		int i;
-		uint32_t cks = 0;
-		for (i = 0; i < sizeof( *hdr) / 2; i++)
-		{
-			uint16_t d = ((uint16_t *)hdr)[i];
-			printf( "%s: checksumming : 0x%04" PRIx16 "\n", __func__, d);
-			cks += d;
-		}
-//		hdr->checksum = ~((cks & 0xffff) + (cks >> 16));
-//		hdr->checksum = 0x4d8e;
-		hdr->checksum = 0;
-	}
-	printf( "%s: checksum=0x%04" PRIx16 "\n", __func__, hdr->checksum);
-#endif
+	// XXX TODO : UDP checksum ? see here : 
+	// http://stackoverflow.com/questions/1480580/udp-checksum-calculation
+	// http://www.frameip.com/entete-udp/#3.4_-_Checksum
+	// http://www.faqs.org/rfcs/rfc768.html
 
 	memcpy( ptr, hdr, sizeof( *hdr));
 	memcpy( ptr + sizeof( *hdr), buf, bufsize);
@@ -259,7 +243,6 @@ int send_udp( int fd, struct udp *hdr, void *buf, int bufsize)
 	free( ptr);
 	return ret;
 }
-//#endif
 
 int manage_tftp( int sport, int dport, char *buf, int size)
 {
@@ -494,69 +477,11 @@ int manage_bootps( char *buf, int size)
 	udp.sport = htons( 67);
 	udp.dport = htons( 68);
 	
-#ifndef USE_ENCAPS
-	char _eth[MAX_ETH];
-	int _size = 0;
-
-	udp.len = htons( udps + bootpcs);
-
-	struct ip ip;
-	int ips = sizeof( ip);
-	uint8_t bcast_ip[4] = { 255, 255, 255, 255 };
-	uint8_t bcast_mac[6] = { 255, 255, 255, 255, 255, 255 };
-
-	memset( &ip, 0, ips);
-	ip.version = 0x45;	// size ?
-	ip.len = htons( ips + udps + bootpcs);
-	ip.ttl = 128;
-	ip.proto = IP_PROTO_UDP;
-	ip.checksum = htons( 0x78fc);
-	for (i = 0; i < 4; i++)
-	{
-		ip.src[i] = the_ip[i];
-//		ip.dst[i] = cli_ip[i];
-		ip.dst[i] = bcast_ip[i];
-	}
-	_size += ips;
-
-	struct eth eth;
-	int eths = sizeof( eth);
-	
-	memset( &eth, 0, eths);
-	for (i = 0; i < 6; i++)
-	{
-//		eth.dst[i] = cli[i];
-		eth.dst[i] = bcast_mac[i];
-		eth.src[i] = the_mac[i];
-	}
-	eth.type = 0x0008;
-	_size += eths;
-	
-	_size += udps;
-	_size += bootpcs;
-	if (_size > sizeof( _eth))
-	{
-		printf( "%s: bootpc frame too big (_size=%d, max=%" PRIzd ")\n", __func__, _size, sizeof( eth));
-		return 1;
-	}
-	pos = 0;
-	memcpy( _eth + pos, &eth, eths);
-	pos += eths;
-	memcpy( _eth + pos, &ip, ips);
-	pos += ips;
-	memcpy( _eth + pos, &udp, udps);
-	pos += udps;
-	memcpy( _eth + pos, &bootp, bootpcs);
-	pos += bootpcs;
-	send_vnet( the_fd, _eth, _size);
-
-#else
 	ret = send_udp( the_fd, &udp, &bootp, bootpcs);
 	if (ret)
 	{
 		printf( "%s: failed to send udp (%d)\n", __func__, ret);
 	}
-#endif
 	
 	return ret;
 }
@@ -626,7 +551,6 @@ int manage_arp( char *buf, int size)
 		printf( ":%02" PRIx8, cli[i]);
 	}
 	printf( "\n");
-	int pos = 0;
 
 	int req = 0;
 	switch (hdr->opcode)
@@ -642,13 +566,7 @@ int manage_arp( char *buf, int size)
 
 	printf( "ARP REQUEST\n");
 
-	char _eth[MAX_ETH];
-	int _size = 0;
-
 	struct arp arp;
-	int arps = sizeof( arp);
-	struct eth eth;
-	int eths = sizeof( eth);
 
 	memset( &arp, 0, sizeof( arp));
 	arp.htype = 0x0100;
@@ -667,8 +585,9 @@ int manage_arp( char *buf, int size)
 		arp.sender_ip[i] = the_ip[i];
 		arp.target_ip[i] = cli_ip[i];
 	}
-	_size += arps;
 
+	struct eth eth;
+	int eths = sizeof( eth);
 	memset( &eth, 0, eths);
 	for (i = 0; i < 6; i++)
 	{
@@ -676,20 +595,8 @@ int manage_arp( char *buf, int size)
 		eth.src[i] = the_mac[i];
 	}
 	eth.type = 0x0608;
-	_size += eths;
+	send_eth( the_fd, &eth, &arp, sizeof( arp));
 
-	if (_size > sizeof( _eth))
-	{
-		printf( "%s: bootpc frame too big (_size=%d, max=%" PRIzd ")\n", __func__, _size, sizeof( eth));
-		return 1;
-	}
-	pos = 0;
-	memcpy( _eth + pos, &eth, eths);
-	pos += eths;
-	memcpy( _eth + pos, &arp, arps);
-	pos += arps;
-	send_vnet( the_fd, _eth, _size);
-	
 	return 0;
 }
 
