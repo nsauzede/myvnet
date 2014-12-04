@@ -9,6 +9,7 @@ TARGET+=icmp_ping.exe
 TARGET+=myping.exe
 TARGET+=mydhcpd.exe
 TARGET+=rpcap.exe
+TARGET+=mybridge.exe
 
 CFLAGS=-Wall -Werror
 

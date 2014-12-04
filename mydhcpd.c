@@ -10,6 +10,8 @@
 
 #include "myvutils.h"
 
+#define dprintf(...) do{}while(0)
+
 #pragma pack(1)
 
 typedef struct eth {
@@ -100,7 +102,7 @@ int send_vnet( int fd, char *buf, int size)
 	int ret = 0;
 	uint32_t nsize;
 	int n;
-	printf( "%s: size=%d\n", __func__, size);
+	dprintf( "%s: size=%d\n", __func__, size);
 	if (size > MAX_ETH)
 	{
 		printf( "frame too big for ethernet ? (must send %d, max %d)\n", size, MAX_ETH);
@@ -226,9 +228,9 @@ int send_udp( int fd, struct udp *hdr, void *buf, int bufsize)
 	if (!hdr->len)
 	{
 		hdr->len = htons( sizeof( *hdr) + bufsize);
-		printf( "%s: auto len, bufsize=%d, total=%" PRIu16 "\n", __func__, bufsize, ntohs( hdr->len));
+		dprintf( "%s: auto len, bufsize=%d, total=%" PRIu16 "\n", __func__, bufsize, ntohs( hdr->len));
 	}
-	printf( "%s: len=0x%04" PRIx16 "\n", __func__, hdr->len);
+	dprintf( "%s: len=0x%04" PRIx16 "\n", __func__, hdr->len);
 	// XXX UDP checksum ? http://stackoverflow.com/questions/1480580/udp-checksum-calculation, http://www.frameip.com/entete-udp/#3.4_-_Checksum, http://www.faqs.org/rfcs/rfc768.html
 
 	memcpy( ptr, hdr, sizeof( *hdr));
@@ -241,19 +243,19 @@ int send_udp( int fd, struct udp *hdr, void *buf, int bufsize)
 int manage_tftp( int sport, int dport, char *buf, int size)
 {
 	struct tftp *hdr = (void *)buf;
-	printf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
+	dprintf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
 	if (size < sizeof( *hdr))
 	{
 		printf( "not tftp ?\n");
 		return 1;
 	}
 	
-	printf( "%s: opcode=%" PRIx16 "\n", __func__, hdr->opcode);
+	dprintf( "%s: opcode=%" PRIx16 "\n", __func__, hdr->opcode);
 	char *file = (char *)hdr->data;
-	char *mode = 0;
-	int len = strlen( file);
-	if (len)
-		mode = file + len + 1;
+//	char *mode = 0;
+//	int len = strlen( file);
+//	if (len)
+//		mode = file + len + 1;
 	int is_read = 0;
 	static int read_sport = 0;
 	static int read_dport = 0;
@@ -267,14 +269,14 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 #define TFTP_OPCODE_ACQ		0x400
 #define TFTP_OPCODE_ERROR	0x500
 		case TFTP_OPCODE_RRQ:	//RRQ
-			printf( "RRQ: file=%s mode=%s\n", file, mode);
+			dprintf( "RRQ: file=%s mode=%s\n", file, mode);
 			if ((dport == UDP_PORT_TFTP) && (!read_sport))
 				is_read = 1;
 			break;
 		case TFTP_OPCODE_ERROR:
 		{
-			uint16_t code = *(uint16_t *)(hdr->data + 2);
-			printf( "ERROR: code=%" PRIx16 "\n", code);
+//			uint16_t code = *(uint16_t *)(hdr->data + 2);
+			dprintf( "ERROR: code=%" PRIx16 "\n", code);
 			read_sport = 0;
 			break;
 		}
@@ -282,7 +284,7 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 		{
 			uint16_t block;
 			block = ntohs( *(uint16_t *)hdr->data);
-			printf( "ACQ: block=%d blockn=%d\n", block, blockn);
+			dprintf( "ACQ: block=%d blockn=%d\n", block, blockn);
 			if (last != 1)
 			if (block == blockn)
 			{
@@ -298,7 +300,7 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 	
 	if (is_read)
 	{
-		printf( "READ: sport=%d dport=%d\n", sport, dport);
+		dprintf( "READ: sport=%d dport=%d\n", sport, dport);
 		if (read_sport == 0)
 		{
 			read_sport = sport;
@@ -322,7 +324,7 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 				fd = fopen( file, "rb");
 				if (!fd)
 				{
-					perror( "fopen");
+//					perror( "fopen");
 					tftp_data.hdr.opcode = TFTP_OPCODE_ERROR;
 					tftp_data.data[len++] = 0;
 					tftp_data.data[len++] = 1;
@@ -360,7 +362,7 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 			}
 			if (!last)
 			{
-			printf( "about to send %s, len=%d fd=%p, sport=%d dport=%d\n", tftp_data.hdr.opcode == TFTP_OPCODE_DATA ? "DATA" : "ERROR", len, fd, sport, dport);
+			dprintf( "about to send %s, len=%d fd=%p, sport=%d dport=%d\n", tftp_data.hdr.opcode == TFTP_OPCODE_DATA ? "DATA" : "ERROR", len, fd, sport, dport);
 
 			struct udp udp;
 			memset( &udp, 0, sizeof( udp));
@@ -382,7 +384,7 @@ int manage_bootps( char *buf, int size)
 	int ret = -1;
 	
 	struct bootp *hdr = (void *)buf;
-	printf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
+	dprintf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
 	if (size < sizeof( *hdr))
 	{
 		printf( "not bootps ?\n");
@@ -390,15 +392,15 @@ int manage_bootps( char *buf, int size)
 	}
 	
 	uint8_t cli[6];
-	printf( "%s: client MAC is ", __func__);
+	dprintf( "%s: client MAC is ", __func__);
 	int i;
 	for (i = 0; i < 6; i++)
 	{
 		cli[i] = hdr->cli_mac[i];
-		printf( ":%02" PRIx8, cli[i]);
+		dprintf( ":%02" PRIx8, cli[i]);
 	}
-	printf( "\n");
-	printf( "magic=%08" PRIx32 "\n", (uint32_t)ntohl( hdr->magic));
+	dprintf( "\n");
+	dprintf( "magic=%08" PRIx32 "\n", (uint32_t)ntohl( hdr->magic));
 	
 	int disc = 1;
 	int pos = 0;
@@ -422,7 +424,7 @@ int manage_bootps( char *buf, int size)
 		}
 		pos += len;
 	}
-	printf( "DHCP %s\n", disc ? "Discovery" : "Request");
+	dprintf( "DHCP %s\n", disc ? "Discovery" : "Request");
 	
 	struct bootp bootp;
 	int bootpcs = sizeof( bootp);
@@ -480,7 +482,7 @@ int manage_bootps( char *buf, int size)
 int manage_udp( char *buf, int size)
 {
 	struct udp *hdr = (void *)buf;
-	printf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
+	dprintf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
 	if (size < sizeof( *hdr))
 	{
 		printf( "not ip ?\n");
@@ -505,7 +507,7 @@ int manage_udp( char *buf, int size)
 int manage_ip( char *buf, int size)
 {
 	struct ip *hdr = (void *)buf;
-	printf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
+	dprintf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
 	if (size < sizeof( *hdr))
 	{
 		printf( "not ip ?\n");
@@ -526,7 +528,7 @@ int manage_ip( char *buf, int size)
 int manage_arp( char *buf, int size)
 {
 	struct arp *hdr = (void *)buf;
-	printf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
+	dprintf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
 	if (size < sizeof( *hdr))
 	{
 		printf( "not arp ?\n");
@@ -534,14 +536,14 @@ int manage_arp( char *buf, int size)
 	}
 
 	uint8_t cli[6];
-	printf( "%s: sender MAC is ", __func__);
+	dprintf( "%s: sender MAC is ", __func__);
 	int i;
 	for (i = 0; i < 6; i++)
 	{
 		cli[i] = hdr->sender_mac[i];
-		printf( ":%02" PRIx8, cli[i]);
+		dprintf( ":%02" PRIx8, cli[i]);
 	}
-	printf( "\n");
+	dprintf( "\n");
 
 	int req = 0;
 	switch (hdr->opcode)
@@ -555,7 +557,7 @@ int manage_arp( char *buf, int size)
 			return -1;
 	}
 
-	printf( "ARP REQUEST\n");
+	dprintf( "ARP REQUEST\n");
 
 	struct arp arp;
 
@@ -595,7 +597,7 @@ int manage_eth( char *buf, int size)
 {
 	struct eth *hdr = (void *)buf;
 	int i;
-	printf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
+	dprintf( "%s: size=%d hdr=%" PRIzd "\n", __func__, size, sizeof( *hdr));
 	if (size < sizeof( *hdr))
 	{
 		printf( "not ethernet ?\n");
@@ -677,7 +679,7 @@ int main( int argc, char *argv[])
 				printf( "frame too big ! got %d max %" PRIzd "\n", size, sizeof( buf));
 				exit( 3);
 			}
-			printf( "about to read %d bytes\n", size);
+			dprintf( "about to read %d bytes\n", size);
 			n = read_full( s, buf, size);
 			if (n <= 0)
 			{
