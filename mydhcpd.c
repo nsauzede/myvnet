@@ -409,13 +409,13 @@ int manage_bootps( char *buf, int size)
 		int type = hdr->options[pos++];
 		if (type == 0xff)	// end option
 		{
-			printf( "option end\n");
+			dprintf( "option end\n");
 			break;
 		}
 		int len = hdr->options[pos++];
 		if (type == 53)	// DHCP message type
 		{
-			printf( "option DHCP message type\n");
+			dprintf( "option DHCP message type\n");
 			if (hdr->options[pos] == 1)
 				disc = 1;
 			else if (hdr->options[pos] == 3)

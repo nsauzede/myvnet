@@ -7,6 +7,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#define dprintf(...) do{}while(0)
+
 int main( int argc, char *argv[])
 {
 	int uport = 10001;
@@ -118,7 +120,7 @@ int main( int argc, char *argv[])
 				printf( "hangup\n");
 				exit( 2);
 			}
-			printf( "recvfrom returned %d from %s\n", n, inet_ntoa( usa.sin_addr));
+			dprintf( "recvfrom returned %d from %s\n", n, inet_ntoa( usa.sin_addr));
 			uint32_t size = n;
 			uint32_t nsize = htonl( size);
 			n = write( s, &nsize, sizeof( nsize));
@@ -129,7 +131,7 @@ int main( int argc, char *argv[])
 		{
 			uint32_t nsize = 0, size;
 			n = read( s, &nsize, sizeof( nsize));
-			printf( "read returned %d\n", n);
+			dprintf( "read returned %d\n", n);
 			if (n == 0)
 			{
 				printf( "hangup\n");
