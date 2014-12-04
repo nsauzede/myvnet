@@ -11,6 +11,7 @@ TARGET+=mydhcpd.exe
 TARGET+=rpcap.exe
 ifndef WIN32
 TARGET+=mybridge.exe
+TARGET+=mypxesrv.exe
 endif
 
 CFLAGS=-Wall -Werror
@@ -36,7 +37,10 @@ all:$(TARGET)
 	$(CC) -o $@ $(CFLAGS) $^ $(LDFLAGS)
 
 mydhcpd.exe: mydhcpd.o myvutils.o
+mypxesrv.exe: mypxesrv.o myvutils.o
 #	$(CC) -o $@ $^ $(LDFLAGS)
+
+mypxesrv.exe: LDFLAGS+=-static
 
 clean:
 	$(RM) $(TARGET) *.o
