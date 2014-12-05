@@ -45,7 +45,9 @@ mypxesrv.exe: LDFLAGS+=-static
 endif
 mypxesrv.exe: mypxesrv.o myvutils.o
 	$(CC) -o $@ $^ $(LDFLAGS)
+ifdef MIPS
 	mips-linux-gnu-strip.exe --strip-all mypxesrv.exe
+endif
 
 clean:
 	$(RM) $(TARGET) *.o
