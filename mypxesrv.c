@@ -19,9 +19,20 @@
 #include <net/if.h>
 #endif
 
+#if 0
 #define dprintf(...) do{}while(0)
+#else
+#define dprintf(...) do{printf(__VA_ARGS__);}while(0)
+#endif
 
 #pragma pack(1)
+
+#if 0
+#define ntohs(x) x
+#define ntohl(x) x
+#define htons(x) x
+#define htonl(x) x
+#endif
 
 typedef struct eth {
 	uint8_t dst[6];
@@ -97,12 +108,13 @@ typedef struct tftp_data {
 
 #define MAX_ETH			1502
 
-#define ETH_TYPE_IP		0x0008
-#define ETH_TYPE_ARP	0x0608
+#define ETH_TYPE_IP		0x0800
+#define ETH_TYPE_ARP	0x0806
 
 #define IP_PROTO_UDP	0x11
 
-#define UDP_PORT_BOOTP 67
+#define UDP_PORT_BOOTPS 67
+#define UDP_PORT_BOOTPC 68
 #define UDP_PORT_TFTP 69
 #define UDP_PORT_TFTP_READ 49008
 
@@ -219,7 +231,7 @@ int send_ip( int fd, struct ip *hdr, void *buf, int bufsize)
 	}
 
 	memset( &eth, 0, sizeof( eth));
-	eth.type = ETH_TYPE_IP;
+	eth.type = htons(ETH_TYPE_IP);
 	memcpy( ptr, hdr, sizeof( *hdr));
 	memcpy( ptr + sizeof( *hdr), buf, bufsize);
 	ret = send_eth( fd, &eth, ptr, sizeof( *hdr) + bufsize);
@@ -263,22 +275,22 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 	
 	dprintf( "%s: opcode=%" PRIx16 "\n", __func__, hdr->opcode);
 	char *file = (char *)hdr->data;
-//	char *mode = 0;
-//	int len = strlen( file);
-//	if (len)
-//		mode = file + len + 1;
+	char *mode = 0;
+	int len = strlen( file);
+	if (len)
+		mode = file + len + 1;
 	int is_read = 0;
 	static int read_sport = 0;
 	static int read_dport = 0;
 	int last = 0;
 	static int blockn = 1;
-	switch (hdr->opcode)
+	switch (ntohs(hdr->opcode))
 	{
-#define TFTP_OPCODE_RRQ		0x100
-#define TFTP_OPCODE_WRQ		0x200
-#define TFTP_OPCODE_DATA	0x300
-#define TFTP_OPCODE_ACQ		0x400
-#define TFTP_OPCODE_ERROR	0x500
+#define TFTP_OPCODE_RRQ		0x1
+#define TFTP_OPCODE_WRQ		0x2
+#define TFTP_OPCODE_DATA	0x3
+#define TFTP_OPCODE_ACQ		0x4
+#define TFTP_OPCODE_ERROR	0x5
 		case TFTP_OPCODE_RRQ:	//RRQ
 			dprintf( "RRQ: file=%s mode=%s\n", file, mode);
 			if ((dport == UDP_PORT_TFTP) && (!read_sport))
@@ -286,7 +298,7 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 			break;
 		case TFTP_OPCODE_ERROR:
 		{
-//			uint16_t code = *(uint16_t *)(hdr->data + 2);
+			uint16_t code = *(uint16_t *)(hdr->data + 2);
 			dprintf( "ERROR: code=%" PRIx16 "\n", code);
 			read_sport = 0;
 			break;
@@ -478,8 +490,8 @@ int manage_bootps( char *buf, int size)
 	int udps = sizeof( udp);
 
 	memset( &udp, 0, udps);
-	udp.sport = htons( 67);
-	udp.dport = htons( 68);
+	udp.sport = htons( UDP_PORT_BOOTPS);
+	udp.dport = htons( UDP_PORT_BOOTPC);
 	
 	ret = send_udp( the_fd, &udp, &bootp, bootpcs);
 	if (ret)
@@ -501,7 +513,8 @@ int manage_udp( char *buf, int size)
 	}
 	switch (ntohs( hdr->dport))
 	{
-		case UDP_PORT_BOOTP:
+		case UDP_PORT_BOOTPS:
+		case UDP_PORT_BOOTPC:
 			manage_bootps( buf + sizeof( *hdr), size - sizeof( *hdr));
 			break;
 		case UDP_PORT_TFTP:
@@ -509,7 +522,7 @@ int manage_udp( char *buf, int size)
 			manage_tftp( ntohs( hdr->sport), ntohs( hdr->dport), buf + sizeof( *hdr), size - sizeof( *hdr));
 			break;
 		default:
-			printf( "unknown ip port 0x%01x\n", hdr->dport);
+			printf( "unknown udp port 0x%01x\n", hdr->dport);
 			break;
 	}
 	return 0;
@@ -524,7 +537,7 @@ int manage_ip( char *buf, int size)
 		printf( "not ip ?\n");
 		return 1;
 	}
-	switch (hdr->proto)
+	switch (ntohs(hdr->proto))
 	{
 		case IP_PROTO_UDP:
 			manage_udp( buf + sizeof( *hdr), size - sizeof( *hdr));
@@ -557,9 +570,9 @@ int manage_arp( char *buf, int size)
 	dprintf( "\n");
 
 	int req = 0;
-	switch (hdr->opcode)
+	switch (ntohs(hdr->opcode))
 	{
-#define ARP_OPCODE_REQUEST 0x0100
+#define ARP_OPCODE_REQUEST 0x01
 		case ARP_OPCODE_REQUEST:
 			req = 1;
 			break;
@@ -598,7 +611,7 @@ int manage_arp( char *buf, int size)
 		eth.dst[i] = cli[i];
 		eth.src[i] = the_mac[i];
 	}
-	eth.type = ETH_TYPE_ARP;
+	eth.type = htons(ETH_TYPE_ARP);
 	send_eth( the_fd, &eth, &arp, sizeof( arp));
 
 	return 0;
@@ -618,7 +631,7 @@ int manage_eth( char *buf, int size)
 	{
 		cli_mac[i] = hdr->src[i];
 	}
-	switch (hdr->type)
+	switch (ntohs(hdr->type))
 	{
 		case ETH_TYPE_IP:
 			manage_ip( buf + sizeof( *hdr), size - sizeof( *hdr));
@@ -655,6 +668,11 @@ int main( int argc, char *argv[])
 	printf( "connected to port %d\n", port);
 #else
 	char *intf = "eth1";
+	int arg = 1;
+	if (arg < argc)
+	{
+    intf = argv[arg++];
+	}
 	int protocol = ETH_P_ALL;
 	s = socket( PF_PACKET, SOCK_RAW, htons( protocol));
 	if (s == -1)
