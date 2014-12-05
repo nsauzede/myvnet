@@ -19,20 +19,13 @@
 #include <net/if.h>
 #endif
 
-#if 0
+#if 1
 #define dprintf(...) do{}while(0)
 #else
 #define dprintf(...) do{printf(__VA_ARGS__);}while(0)
 #endif
 
 #pragma pack(1)
-
-#if 0
-#define ntohs(x) x
-#define ntohl(x) x
-#define htons(x) x
-#define htonl(x) x
-#endif
 
 typedef struct eth {
 	uint8_t dst[6];
@@ -253,7 +246,7 @@ int send_udp( int fd, struct udp *hdr, void *buf, int bufsize)
 		hdr->len = htons( sizeof( *hdr) + bufsize);
 		dprintf( "%s: auto len, bufsize=%d, total=%" PRIu16 "\n", __func__, bufsize, ntohs( hdr->len));
 	}
-	dprintf( "%s: len=0x%04" PRIx16 "\n", __func__, hdr->len);
+	dprintf( "%s: len=0x%04" PRIx16 "\n", __func__, ntohs(hdr->len));
 	// XXX UDP checksum ? http://stackoverflow.com/questions/1480580/udp-checksum-calculation, http://www.frameip.com/entete-udp/#3.4_-_Checksum, http://www.faqs.org/rfcs/rfc768.html
 
 	memcpy( ptr, hdr, sizeof( *hdr));
@@ -273,7 +266,7 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 		return 1;
 	}
 	
-	dprintf( "%s: opcode=%" PRIx16 "\n", __func__, hdr->opcode);
+	dprintf( "%s: opcode=%" PRIx16 "\n", __func__, ntohs(hdr->opcode));
 	char *file = (char *)hdr->data;
 	char *mode = 0;
 	int len = strlen( file);
@@ -292,6 +285,7 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 #define TFTP_OPCODE_ACQ		0x4
 #define TFTP_OPCODE_ERROR	0x5
 		case TFTP_OPCODE_RRQ:	//RRQ
+			mode = mode;	// in case we disable dprintf below
 			dprintf( "RRQ: file=%s mode=%s\n", file, mode);
 			if ((dport == UDP_PORT_TFTP) && (!read_sport))
 				is_read = 1;
@@ -299,6 +293,7 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 		case TFTP_OPCODE_ERROR:
 		{
 			uint16_t code = *(uint16_t *)(hdr->data + 2);
+			code = code;	// in case we remove disable below
 			dprintf( "ERROR: code=%" PRIx16 "\n", code);
 			read_sport = 0;
 			break;
@@ -317,7 +312,7 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 			break;
 		}
 		default:
-			printf( "%s: unknown opcode %" PRIx16 "\n", __func__, hdr->opcode);
+			printf( "%s: unknown opcode %" PRIx16 "\n", __func__, ntohs(hdr->opcode));
 			break;
 	}
 	
@@ -335,7 +330,7 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 			static int len = 0;
 			struct tftp_data tftp_data;
 			memset( &tftp_data, 0, sizeof( tftp_data));
-			tftp_data.hdr.opcode = TFTP_OPCODE_DATA;
+			tftp_data.hdr.opcode = htons(TFTP_OPCODE_DATA);
 			tftp_data.hdr.blockn = htons( blockn);
 	
 			static FILE *fd = 0;
@@ -348,7 +343,7 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 				if (!fd)
 				{
 //					perror( "fopen");
-					tftp_data.hdr.opcode = TFTP_OPCODE_ERROR;
+					tftp_data.hdr.opcode = htons(TFTP_OPCODE_ERROR);
 					tftp_data.data[len++] = 0;
 					tftp_data.data[len++] = 1;
 					read_sport = 0;
@@ -385,7 +380,7 @@ int manage_tftp( int sport, int dport, char *buf, int size)
 			}
 			if (!last)
 			{
-			dprintf( "about to send %s, len=%d fd=%p, sport=%d dport=%d\n", tftp_data.hdr.opcode == TFTP_OPCODE_DATA ? "DATA" : "ERROR", len, fd, sport, dport);
+			dprintf( "about to send %s, len=%d fd=%p, sport=%d dport=%d\n", ntohs(tftp_data.hdr.opcode) == TFTP_OPCODE_DATA ? "DATA" : "ERROR", len, fd, sport, dport);
 
 			struct udp udp;
 			memset( &udp, 0, sizeof( udp));
@@ -537,7 +532,7 @@ int manage_ip( char *buf, int size)
 		printf( "not ip ?\n");
 		return 1;
 	}
-	switch (ntohs(hdr->proto))
+	switch (hdr->proto)
 	{
 		case IP_PROTO_UDP:
 			manage_udp( buf + sizeof( *hdr), size - sizeof( *hdr));
@@ -577,7 +572,7 @@ int manage_arp( char *buf, int size)
 			req = 1;
 			break;
 		default:
-			printf( "unknown arp opcode 0x%04x\n", hdr->opcode);
+			printf( "unknown arp opcode 0x%04x\n", ntohs(hdr->opcode));
 			return -1;
 	}
 
@@ -586,12 +581,12 @@ int manage_arp( char *buf, int size)
 	struct arp arp;
 
 	memset( &arp, 0, sizeof( arp));
-	arp.htype = 0x0100;
-	arp.ptype = 0x0008;
+	arp.htype = htons(0x01);
+	arp.ptype = htons(0x08);
 	arp.hsize = 6;
 	arp.psize = 4;
 	if (req == 1)
-		arp.opcode = 0x0200;
+		arp.opcode = htons(0x02);
 	for (i = 0; i < 6; i++)
 	{
 		arp.sender_mac[i] = the_mac[i];
