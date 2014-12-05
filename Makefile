@@ -37,14 +37,15 @@ all:$(TARGET)
 	$(CC) -o $@ $(CFLAGS) $^ $(LDFLAGS)
 
 mydhcpd.exe: mydhcpd.o myvutils.o
+ifdef MIPS
 mypxesrv.exe:CC=mips-linux-gnu-gcc
 mypxesrv.exe:CFLAGS=-msoft-float
 mypxesrv.exe:LDFLAGS=-msoft-float
+mypxesrv.exe: LDFLAGS+=-static
+endif
 mypxesrv.exe: mypxesrv.o myvutils.o
 	$(CC) -o $@ $^ $(LDFLAGS)
 	mips-linux-gnu-strip.exe --strip-all mypxesrv.exe
-
-mypxesrv.exe: LDFLAGS+=-static
 
 clean:
 	$(RM) $(TARGET) *.o
