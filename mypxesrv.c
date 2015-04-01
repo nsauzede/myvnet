@@ -13,9 +13,14 @@
 #define USE_RAW
 
 #ifdef USE_RAW
+#ifdef WIN32
+#define PF_PACKET PF_INET
+#define ETH_P_ALL       0x0003          /* Every packet (be careful!!!) */
+#else
 #include <sys/ioctl.h>
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
+#endif
 #include <net/if.h>
 #endif
 
